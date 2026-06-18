@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html><head>
+  <link rel="stylesheet" href="leaflet.css" />
+  <script src="leaflet.js"></script>
+</head><body style="margin:0">
+  <div id="map" style="height:100vh"></div>
+  <script>
+
+    var southWest = L.latLng(45.0, 10.0); // Południowy zachód
+    var northEast = L.latLng(60.0, 30.0); // Północny wschód
+    var bounds = L.latLngBounds(southWest, northEast);
+    const map = L.map('map', {
+      maxBounds: bounds,
+      maxBoundsViscosity: 1.0,
+      minZoom: 7,
+      maxZoom: 18
+    }).setView([51.8, 18.94], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    let markers = {};
+
+    function updateAircraft(data) {
+      data.forEach(plane => {
+        if (markers[plane.icao24]) {
+          markers[plane.icao24].setLatLng([plane.lat, plane.lon]);
+        } else {
+          markers[plane.icao24] = L.marker([plane.lat, plane.lon]).addTo(map);
+        }
+      });
+    }
+  </script>
+</body></html>
