@@ -381,6 +381,101 @@ def build_parser() -> argparse.ArgumentParser:
     )
     return parser
 
+def arrival_by_airport(
+    engine: Engine,
+    airport: str,
+    start_date: str | date | None = None,
+    end_date: str | date | None = None,
+) -> pd.DataFrame:
+    where_sql, params = build_filters(
+        "event_date_local",
+        "monitored_airport_code",
+        start_date,
+        end_date,
+        [airport],
+    )
+    domestic_filter = "AND departure_airport_code LIKE 'EP%'"
+    query = f"""
+        SELECT
+            callsign AS "Numer lotu",
+            event_time_utc AS "Godzina przylotu",
+            departure_airport_name as "Z lotniska: "
+        FROM vw_flight_details
+        {where_sql}
+        AND event_type_code = 'ARRIVAL'
+        {domestic_filter}
+        ORDER BY event_time_utc DESC
+    """
+    dataframe = read_dataframe(engine, query, params)
+    dataframe["Z lotniska: "] = dataframe["Z lotniska: "].fillna("Nieznane lotnisko")
+
+    dataframe["Godzina przylotu"] = pd.to_datetime(dataframe["Godzina przylotu"])
+    dataframe.insert(
+        1,
+        "Data przylotu",
+        dataframe["Godzina przylotu"].dt.strftime("%Y-%m-%d"),
+    )
+    dataframe["Godzina przylotu"] = dataframe["Godzina przylotu"].dt.strftime(
+        "%H:%M:%S"
+    )
+
+    return dataframe
+
+def departure_by_airport(
+    engine: Engine,
+    airport: str,
+    start_date: str | date | None = None,
+    end_date: str | date | None = None,
+) -> pd.DataFrame:
+    where_sql, params = build_filters(
+        "event_date_local",
+        "monitored_airport_code",
+        start_date,
+        end_date,
+        [airport],
+    )
+
+    domestic_filter = "AND arrival_airport_code LIKE 'EP%'"
+
+    query = f"""
+        SELECT
+            callsign AS "Numer lotu",
+            event_time_utc AS "Godzina wylotu",
+            arrival_airport_name as "Do lotniska: "
+        FROM vw_flight_details
+        {where_sql}
+        AND event_type_code = 'DEPARTURE'
+        {domestic_filter}
+        ORDER BY event_time_utc DESC
+    """
+    
+    dataframe = read_dataframe(engine, query, params)
+    dataframe["Do lotniska: "] = dataframe["Do lotniska: "].fillna("Nieznane lotnisko")
+
+    dataframe["Godzina wylotu"] = pd.to_datetime(dataframe["Godzina wylotu"])
+    dataframe.insert(
+        1,
+        "Data wylotu",
+        dataframe["Godzina wylotu"].dt.strftime("%Y-%m-%d"),
+    )
+    dataframe["Godzina wylotu"] = dataframe["Godzina wylotu"].dt.strftime(
+        "%H:%M:%S"
+    )
+
+    return dataframe
+
+
+def list_monitored_airports(engine: Engine) -> pd.DataFrame:
+    
+    query = """
+        SELECT DISTINCT
+            monitored_airport_code,
+            monitored_airport_name
+        FROM vw_flight_details
+        ORDER BY monitored_airport_name
+    """
+    return read_dataframe(engine, query, {})
+
 
 def main() -> int:
     args = build_parser().parse_args()
