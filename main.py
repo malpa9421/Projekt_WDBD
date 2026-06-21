@@ -1,17 +1,17 @@
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QPushButton, QStackedWidget, QLabel, QVBoxLayout, QHBoxLayout, QMenu
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QPushButton, QStackedWidget, QLabel, QVBoxLayout, QHBoxLayout, QMenu, QTableView, QComboBox, QHeaderView, QSizePolicy
 from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtCore import QUrl
 from PySide6.QtWebEngineCore import QWebEngineSettings
 from qt_material import apply_stylesheet
-
+from Qt_df_model import *
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
-
+import pandas as pd
 import sys
 from pathlib import Path
 
-from analytical_queries import create_engine_for_database, traffic_by_airport
+from analytical_queries import create_engine_for_database, traffic_by_airport, arrival_by_airport, departure_by_airport, list_monitored_airports
 
 
 class TrafficChart(FigureCanvasQTAgg):
@@ -61,10 +61,42 @@ class TrafficChart(FigureCanvasQTAgg):
         self.figure.tight_layout()
         self.draw()
 
+def create_flight_table(title: str) -> tuple[QVBoxLayout, QTableView]:
+    column_layout = QVBoxLayout()
+    
+    label = QLabel(title)
+    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    label.setStyleSheet("font-weight: bold; font-size: 14px;")
+    column_layout.addWidget(label)
+    
+    
+    table = QTableView()
+    table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+    header = table.horizontalHeader()
+    
+    
+    header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+    
+    header.setStretchLastSection(True)
+    
+    column_layout.addWidget(table)
+    return column_layout, table
 
 class MainWindow(QMainWindow):
+    def setup_table_columns(table: QTableView) -> None:
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        last_column = table.model().columnCount() - 1
+        header.setSectionResizeMode(last_column, QHeaderView.ResizeMode.Stretch)
+    
+    
     def __init__(self):
         apply_stylesheet(app, theme='dark_teal.xml')
+        app.setStyleSheet(app.styleSheet() + """
+        QHeaderView::section {
+            text-transform: none;
+            }
+        """)
         super().__init__()
 
         #engine dla całego gui, usuwany przy zamknięciu
@@ -79,7 +111,7 @@ class MainWindow(QMainWindow):
         topbar= QHBoxLayout()
         btn_map = QPushButton("Mapa")
         btn_history = QPushButton("Historia lotów")
-        btn_settings = QPushButton("Ustawienia")
+        btn_settings = QPushButton("Wykres")
         topbar.addWidget(btn_map)
         topbar.addWidget(btn_history)
         topbar.addWidget(btn_settings)
@@ -115,11 +147,48 @@ class MainWindow(QMainWindow):
 
 
         
+        hist = QWidget()
+        hist_layout = QVBoxLayout(hist)
+        
+        # 1. Lista rozwijana z lotniskami
+        self.airport_selector = QComboBox()
+        airports_df = list_monitored_airports(self.engine)
+        
+        
+        self.airports_lookup = dict(
+            zip(airports_df["monitored_airport_name"], airports_df["monitored_airport_code"])
+        )
+        self.airport_selector.addItems(airports_df["monitored_airport_name"].tolist())
+        self.airport_selector.currentTextChanged.connect(self.on_airport_changed)
+        hist_layout.addWidget(self.airport_selector)
+        
+        
+        tables_layout = QHBoxLayout()
+        
+        self.airport = (
+            airports_df["monitored_airport_code"].iloc[0]
+            if not airports_df.empty
+            else "EPWA"
+        )
+        
+        arrivals_layout, self.arrivals = create_flight_table("Przyloty")
+        departures_layout, self.departures = create_flight_table("Odloty")
+
+        # Ustawienie danych startowych
+        self.arrivals.setModel(PandasModel(arrival_by_airport(self.engine, self.airport)))
+        self.departures.setModel(PandasModel(departure_by_airport(self.engine, self.airport)))
+
+        # Dodanie do głównego układu
+        tables_layout.addLayout(arrivals_layout, 1)
+        tables_layout.addLayout(departures_layout, 1)
+        hist_layout.addLayout(tables_layout)
+        
+        
 
         # strony
         self.pages = QStackedWidget()
         self.pages.addWidget(map_page)       # index 0
-        self.pages.addWidget(QLabel("Tutaj będzie historia"))   # index 1
+        self.pages.addWidget(hist)   # index 1
         self.pages.addWidget(analytics_page)   # index 2
 
         btn_map.clicked.connect(lambda: self.pages.setCurrentIndex(0))
@@ -139,8 +208,15 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self.engine.dispose()
         event.accept()
-
-
+    def on_airport_changed(self, airport_name: str) -> None:
+        self.airport = self.airports_lookup.get(airport_name, self.airport)
+    
+        self.arrivals.setModel(PandasModel(arrival_by_airport(self.engine, self.airport)))
+        
+    
+        self.departures.setModel(PandasModel(departure_by_airport(self.engine, self.airport)))
+        
+    
 app = QApplication(sys.argv)
 window = MainWindow()
 window.showMaximized()
