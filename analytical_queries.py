@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from datetime import date, time
 import argparse
 from datetime import date
 from typing import Sequence
@@ -475,6 +475,121 @@ def list_monitored_airports(engine: Engine) -> pd.DataFrame:
         ORDER BY monitored_airport_name
     """
     return read_dataframe(engine, query, {})
+
+def normalize_time(value: str | None, name: str) -> str | None:
+    if not value:
+        return None
+    try:
+        return time.fromisoformat(value).isoformat()
+    except ValueError as error:
+        raise ValueError(f"{name} musi mieć format HH:MM lub HH:MM:SS.") from error
+    
+def build_flight_search_filters(
+    departure_airport: str | None = None,
+    arrival_airport: str | None = None,
+    callsign: str | None = None,
+    monitored_airport: str | None = None,
+    event_type: str | None = None,
+    start_date: str | date | None = None,
+    end_date: str | date | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> tuple[str, dict]:
+    conditions: list[str] = []
+    params: dict = {}
+
+    if departure_airport:
+        conditions.append("departure_airport_code ILIKE :departure_airport")
+        params["departure_airport"] = f"%{departure_airport.strip()}%"
+
+    if arrival_airport:
+        conditions.append("arrival_airport_code ILIKE :arrival_airport")
+        params["arrival_airport"] = f"%{arrival_airport.strip()}%"
+
+    if callsign:
+        conditions.append("callsign ILIKE :callsign")
+        params["callsign"] = f"%{callsign.strip()}%"
+
+    if monitored_airport:
+        conditions.append("monitored_airport_code = :monitored_airport")
+        params["monitored_airport"] = monitored_airport.strip().upper()
+
+    if event_type:
+        conditions.append("event_type_code = :event_type")
+        params["event_type"] = event_type
+
+    start_date = normalize_date(start_date, "start_date")
+    end_date = normalize_date(end_date, "end_date")
+    if start_date:
+        conditions.append("event_date_local >= :start_date")
+        params["start_date"] = start_date
+    if end_date:
+        conditions.append("event_date_local <= :end_date")
+        params["end_date"] = end_date
+
+    start_time = normalize_time(start_time, "start_time")
+    end_time = normalize_time(end_time, "end_time")
+    if start_time:
+        conditions.append("event_time_utc::time >= :start_time")
+        params["start_time"] = start_time
+    if end_time:
+        conditions.append("event_time_utc::time <= :end_time")
+        params["end_time"] = end_time
+
+    where_sql = "WHERE " + " AND ".join(conditions) if conditions else ""
+    return where_sql, params
+
+def search_flights(
+    engine: Engine,
+    departure_airport: str | None = None,
+    arrival_airport: str | None = None,
+    callsign: str | None = None,
+    monitored_airport: str | None = None,
+    event_type: str | None = None,
+    start_date: str | date | None = None,
+    end_date: str | date | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    limit: int = 300,
+) -> pd.DataFrame:
+    where_sql, params = build_flight_search_filters(
+        departure_airport=departure_airport,
+        arrival_airport=arrival_airport,
+        callsign=callsign,
+        monitored_airport=monitored_airport,
+        event_type=event_type,
+        start_date=start_date,
+        end_date=end_date,
+        start_time=start_time,
+        end_time=end_time,
+    )
+
+    params["limit"] = limit
+
+    sql = f"""
+        SELECT
+            callsign AS "Numer lotu",
+            event_type_code AS "Typ operacji",
+            event_time_utc AS "Czas UTC",
+            monitored_airport_name AS "Lotnisko monitorowane",
+            departure_airport_code AS "Kod lotniska wylotu",
+            departure_airport_name AS "Lotnisko wylotu",
+            arrival_airport_code AS "Kod lotniska przylotu",
+            arrival_airport_name AS "Lotnisko przylotu",
+            aircraft_id AS "Aircraft ID",
+            is_complete AS "Kompletny"
+        FROM vw_flight_details
+        {where_sql}
+        ORDER BY event_time_utc DESC
+        LIMIT :limit
+    """
+    dataframe = read_dataframe(engine, sql, params)
+
+    dataframe["Czas UTC"] = pd.to_datetime(dataframe["Czas UTC"])
+    dataframe.insert(1, "Data", dataframe["Czas UTC"].dt.strftime("%Y-%m-%d"))
+    dataframe["Czas UTC"] = dataframe["Czas UTC"].dt.strftime("%H:%M:%S")
+
+    return dataframe
 
 
 def main() -> int:
