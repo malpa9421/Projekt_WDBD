@@ -464,6 +464,20 @@ def departure_by_airport(
 
     return dataframe
 
+def list_monitored_airports(engine: Engine) -> pd.DataFrame:
+    
+    query = """
+        SELECT
+            icao_code AS monitored_airport_code,
+            airport_name AS monitored_airport_name,
+            latitude,
+            longitude
+        FROM airport
+        WHERE is_monitored = TRUE
+        ORDER BY airport_name
+    """
+    return read_dataframe(engine, query, {})
+
 
 def normalize_time(value: str | None, name: str) -> str | None:
     if not value:
