@@ -1,7 +1,7 @@
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QPushButton, QStackedWidget, QLabel, QVBoxLayout, QHBoxLayout, QTableView, QComboBox, QHeaderView, QSizePolicy, QLineEdit, QDateEdit, QTimeEdit, QFormLayout, QSpinBox
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QPushButton, QStackedWidget, QLabel, QVBoxLayout, QHBoxLayout, QTableView, QComboBox, QHeaderView, QSizePolicy, QLineEdit, QDateEdit, QTimeEdit, QFormLayout, QSpinBox, QMenu
 from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtCore import QUrl, QDate, QTime, QTimer
+from PySide6.QtCore import QUrl, QDate, QTime, QTimer, Qt
 from PySide6.QtWebEngineCore import QWebEngineSettings
 from qt_material import apply_stylesheet
 from Qt_df_model import *
@@ -11,11 +11,10 @@ import pandas as pd
 import sys
 from pathlib import Path
 from datetime import date
-
+import json
 
 from import_data_all import import_flights, console_progress
-from analytical_queries import create_engine_for_database, traffic_by_airport, arrival_by_airport, departure_by_airport, list_monitored_airports, search_flights
-
+from analytical_queries import create_engine_for_database, traffic_by_airport, arrival_by_airport, departure_by_airport, list_monitored_airports, search_flights, popular_routes
 
 class TrafficChart(FigureCanvasQTAgg):
     def __init__(self, engine):
@@ -72,18 +71,52 @@ def create_flight_table(title: str) -> tuple[QVBoxLayout, QTableView]:
     label.setStyleSheet("font-weight: bold; font-size: 14px;")
     column_layout.addWidget(label)
     
-    
     table = QTableView()
     table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
     header = table.horizontalHeader()
     table.verticalHeader().setVisible(False)
     
     header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-    
     header.setStretchLastSection(True)
     
     column_layout.addWidget(table)
     return column_layout, table
+
+AIRPORT_COORDINATES: dict[str, tuple[float, float]] = {
+    "EPBA": (49.805, 19.001), "EPPK": (52.421, 16.826),
+    "EPLR": (51.240, 22.717), "EPKM": (50.238, 19.035),
+    "EPGI": (53.524, 18.847), "EPOM": (51.577, 17.835),
+    "EPIN": (52.781, 18.249), "EPLS": (51.840, 16.529),
+    "EPZR": (49.766, 19.246), "EPJG": (50.899, 15.785),
+    "EPRG": (50.016, 18.636), "EPML": (50.322, 21.462),
+    "EPLU": (51.418, 16.202), "EPSW": (51.235, 22.715),
+    "EPNL": (49.750, 20.632), "EPZP": (51.976, 15.594),
+    "EPGL": (50.239, 18.668), "EPJS": (50.804, 15.785),
+    "EPKR": (49.683, 21.770), "EPPT": (51.721, 19.699),
+    "EPKA": (50.900, 20.700), "EPKP": (50.079, 20.245),
+    "EPPL": (52.421, 19.309), "EPWK": (52.807, 19.005),
+    "EPST": (50.570, 22.055), "EPBK": (53.104, 23.170),
+    "EPOD": (53.777, 20.408), "EPRP": (51.389, 21.213),
+    "EPNT": (49.462, 20.050), "EPOP": (50.625, 17.781),
+    "EPLL": (51.721, 19.398), "EPSD": (53.389, 14.633),
+    "EPWA": (52.165, 20.967), "EPPO": (52.421, 16.826),
+    "EPTO": (53.116, 18.010), "EPGD": (54.377, 18.466),
+    "EPKE": (54.077, 21.375), "EPEL": (54.167, 19.450),
+    "EPSU": (54.269, 22.893), "EPRZ": (50.110, 22.019),
+    "EPSC": (53.584, 14.902), "EPZA": (50.706, 23.207),
+    "EPSK": (54.479, 17.107), "EPRJ": (50.048, 22.019),
+    "EPKT": (50.474, 19.080), "EPBY": (53.096, 17.977),
+    "EPKK": (50.077, 19.784), "EPWR": (51.103, 16.886),
+    "EPZG": (52.139, 15.798), "EPSY": (53.481, 20.937),
+    "EPMO": (52.451, 20.651), "EPKG": (54.129, 15.285),
+    "EPBC": (52.269, 20.911), "EPLB": (51.240, 22.714),
+    "EPRA": (51.390, 21.214), "EPKW": (49.855, 19.059),
+    "EPCD": (51.198, 23.303), "EPRU": (50.884, 19.193),
+    "EPSA": (49.560, 22.207), "EPZE": (51.841, 16.519),
+    "EPKH": (54.207, 16.265), "EPPB": (52.491, 16.948),
+    "EPPG": (51.792, 16.784), "EPMR": (50.984, 16.887),
+    "EPBH": (53.096, 17.978), "EPKX": (50.077, 19.784),
+}
 
 class MainWindow(QMainWindow):
     def setup_table_columns(table: QTableView) -> None:
@@ -128,7 +161,6 @@ class MainWindow(QMainWindow):
         self.engine = create_engine_for_database()
         airports_df = list_monitored_airports(self.engine)
         
-        
         self.airports_lookup = dict(
             zip(airports_df["monitored_airport_name"], airports_df["monitored_airport_code"])
         )
@@ -139,17 +171,9 @@ class MainWindow(QMainWindow):
             else "EPWA"
         )
 
-        
         self.uptime_timer = QTimer(self)
         self.uptime_timer.timeout.connect(self.update_uptime)
         self.uptime_timer.start(60000)
-        
-        
-
-        
-        
-        
-        
         
         apply_stylesheet(app, theme='dark_teal.xml')
         app.setStyleSheet(app.styleSheet() + """
@@ -158,9 +182,6 @@ class MainWindow(QMainWindow):
             }
         """)
         
-
-        
-
         self.setWindowTitle("Flight Tracker")
 
         central = QWidget()
@@ -177,7 +198,6 @@ class MainWindow(QMainWindow):
         topbar.addWidget(btn_settings)
         topbar.addWidget(btn_search)
         
-
         #mapa + filtry
         map_page = QWidget()
         map_page_layout = QHBoxLayout(map_page)
@@ -188,10 +208,10 @@ class MainWindow(QMainWindow):
         analytics_layout = QVBoxLayout(analytics_page)
         analytics_layout.addWidget(TrafficChart(self.engine))
 
-        sidebar = QWidget()
-        sidebar_layout = QVBoxLayout(sidebar)
-        action_group = QActionGroup(self)
-        sidebar_layout.addStretch()
+        # sidebar = QWidget()
+        # sidebar_layout = QVBoxLayout(sidebar)
+        # action_group = QActionGroup(self)
+        # sidebar_layout.addStretch()
 
         self.web_view = QWebEngineView()
         html_path = Path(__file__).parent / "map/map.html"
@@ -201,27 +221,21 @@ class MainWindow(QMainWindow):
             QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True
         )
         self.web_view.load(QUrl.fromLocalFile(str(html_path)))
-        
+        self.web_view.loadFinished.connect(lambda ok: self.load_airports_to_map())
 
-        map_page_layout.addWidget(sidebar, stretch=1)
-        map_page_layout.addWidget(self.web_view, stretch=4)
+        # map_page_layout.addWidget(sidebar, stretch=1)
+        map_page_layout.addWidget(self.web_view)
 
-
-        
         hist = QWidget()
         hist_layout = QVBoxLayout(hist)
         
         # 1. Lista rozwijana z lotniskami
         self.airport_selector = QComboBox()
-        
         self.airport_selector.addItems(airports_df["monitored_airport_name"].tolist())
         self.airport_selector.currentTextChanged.connect(self.on_airport_changed)
         hist_layout.addWidget(self.airport_selector)
         
-        
         tables_layout = QHBoxLayout()
-        
-        
         
         arrivals_layout, self.arrivals = create_flight_table("Przyloty")
         departures_layout, self.departures = create_flight_table("Odloty")
@@ -296,7 +310,6 @@ class MainWindow(QMainWindow):
         form_layout.addRow("Data przylotu do:", self.arrival_date_to)
         form_layout.addRow("Godzina przylotu od:", self.arrival_time_from)
         form_layout.addRow("Godzina przylotu do:", self.arrival_time_to)
-        
 
         filter_layout.addLayout(form_layout)
 
@@ -313,14 +326,13 @@ class MainWindow(QMainWindow):
 
         search_layout.addWidget(filter_panel, stretch=1)
         search_layout.addWidget(self.search_results, stretch=3)
-        
 
         # strony
         self.pages = QStackedWidget()
         self.pages.addWidget(map_page)       # index 0
-        self.pages.addWidget(hist)   # index 1
-        self.pages.addWidget(analytics_page)   # index 2
-        self.pages.addWidget(search_page)
+        self.pages.addWidget(hist)           # index 1
+        self.pages.addWidget(analytics_page) # index 2
+        self.pages.addWidget(search_page)    # index 3
 
         btn_map.clicked.connect(lambda: self.pages.setCurrentIndex(0))
         btn_history.clicked.connect(lambda: self.pages.setCurrentIndex(1))
@@ -339,18 +351,44 @@ class MainWindow(QMainWindow):
     
     def refresh_data(self):
         print("nowe dane")
+        print("Pobieram dane z OpenSky...")
 
     def closeEvent(self, event):
         self.engine.dispose()
         event.accept()
+
     def on_airport_changed(self, airport_name: str) -> None:
         self.airport = self.airports_lookup.get(airport_name, self.airport)
     
         self.arrivals.setModel(PandasModel(arrival_by_airport(self.engine, self.airport)))
-        
-    
         self.departures.setModel(PandasModel(departure_by_airport(self.engine, self.airport)))
         
+    def load_airports_to_map(self):
+        df = list_monitored_airports(self.engine)
+
+        data = df.to_dict(orient="records")
+        js = f"loadAirports({json.dumps(data)});"
+
+        self.web_view.page().runJavaScript(js)
+
+        routes_df = popular_routes(self.engine, limit=800)
+
+        routes_simple_list = []
+        for _, row in routes_df.iterrows():
+            dep = row['departure_airport_code']
+            arr = row['arrival_airport_code']
+            
+            if dep in AIRPORT_COORDINATES and arr in AIRPORT_COORDINATES:
+                routes_simple_list.append([
+                    AIRPORT_COORDINATES[dep][0],
+                    AIRPORT_COORDINATES[dep][1],
+                    AIRPORT_COORDINATES[arr][0],
+                    AIRPORT_COORDINATES[arr][1], 
+                    int(row['flight_count'])
+                ])
+
+        js_routes = f"loadRoutes({json.dumps(routes_simple_list)});"
+        self.web_view.page().runJavaScript(js_routes)
     
 app = QApplication(sys.argv)
 window = MainWindow()

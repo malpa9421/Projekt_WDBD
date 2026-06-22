@@ -18,14 +18,40 @@
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
     let markers = {};
 
-    function updateAircraft(data) {
-      data.forEach(plane => {
-        if (markers[plane.icao24]) {
-          markers[plane.icao24].setLatLng([plane.lat, plane.lon]);
-        } else {
-          markers[plane.icao24] = L.marker([plane.lat, plane.lon]).addTo(map);
-        }
+    
+    function loadAirports(data) {
+      data.forEach(airport => {
+          L.circleMarker([airport.latitude, airport.longitude])
+          .addTo(map)
+          .bindPopup(airport.monitored_airport_code + "<br>" + airport.monitored_airport_name);
       });
-    }
+    };
+
+    function loadRoutes(routes) {
+        routes.forEach(route => {
+            const latStart = route[0];
+            const lngStart = route[1];
+            const latEnd   = route[2];
+            const lngEnd   = route[3];
+            const count    = route[4];
+
+            const lineCoordinates = [
+                [latStart, lngStart],
+                [latEnd, lngEnd]
+            ];
+
+            const lineWidth = Math.min(Math.max(count / 10, 2), 11);
+
+            // Rysowanie linii na mapie
+            L.polyline(lineCoordinates, {
+                color: '#2b7bba', // ładny odcień niebieskiego
+                weight: lineWidth,
+                opacity: 0.6,
+                smoothFactor: 1.0
+            }).addTo(map);
+        });
+      };
+
+    
   </script>
 </body></html>
