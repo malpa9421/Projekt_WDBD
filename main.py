@@ -1,7 +1,7 @@
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QPushButton, QStackedWidget, QLabel, QVBoxLayout, QHBoxLayout, QMenu, QTableView, QComboBox, QHeaderView, QSizePolicy, QLineEdit, QDateEdit, QTimeEdit, QFormLayout, QSpinBox
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QPushButton, QStackedWidget, QLabel, QVBoxLayout, QHBoxLayout, QTableView, QComboBox, QHeaderView, QSizePolicy, QLineEdit, QDateEdit, QTimeEdit, QFormLayout, QSpinBox
 from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtCore import QUrl, QDate, QTime
+from PySide6.QtCore import QUrl, QDate, QTime, QTimer
 from PySide6.QtWebEngineCore import QWebEngineSettings
 from qt_material import apply_stylesheet
 from Qt_df_model import *
@@ -10,7 +10,10 @@ from matplotlib.figure import Figure
 import pandas as pd
 import sys
 from pathlib import Path
+from datetime import date
 
+
+from import_data_all import import_flights, console_progress
 from analytical_queries import create_engine_for_database, traffic_by_airport, arrival_by_airport, departure_by_airport, list_monitored_airports, search_flights
 
 
@@ -73,7 +76,7 @@ def create_flight_table(title: str) -> tuple[QVBoxLayout, QTableView]:
     table = QTableView()
     table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
     header = table.horizontalHeader()
-    
+    table.verticalHeader().setVisible(False)
     
     header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
     
@@ -114,16 +117,45 @@ class MainWindow(QMainWindow):
         self.search_results.setModel(PandasModel(search_results))
     
     def __init__(self):
+        super().__init__()
+        self.uptime_minutes = 0
+        
+        #engine dla całego gui, usuwany przy zamknięciu
+        self.engine = create_engine_for_database()
+        airports_df = list_monitored_airports(self.engine)
+        
+        
+        self.airports_lookup = dict(
+            zip(airports_df["monitored_airport_name"], airports_df["monitored_airport_code"])
+        )
+
+        self.airport = (
+            airports_df["monitored_airport_code"].iloc[0]
+            if not airports_df.empty
+            else "EPWA"
+        )
+
+        
+        self.uptime_timer = QTimer(self)
+        self.uptime_timer.timeout.connect(self.update_uptime)
+        self.uptime_timer.start(60000)
+        
+        
+
+        
+        
+        
+        
+        
         apply_stylesheet(app, theme='dark_teal.xml')
         app.setStyleSheet(app.styleSheet() + """
         QHeaderView::section {
             text-transform: none;
             }
         """)
-        super().__init__()
+        
 
-        #engine dla całego gui, usuwany przy zamknięciu
-        self.engine = create_engine_for_database()
+        
 
         self.setWindowTitle("Flight Tracker")
 
@@ -177,12 +209,7 @@ class MainWindow(QMainWindow):
         
         # 1. Lista rozwijana z lotniskami
         self.airport_selector = QComboBox()
-        airports_df = list_monitored_airports(self.engine)
         
-        
-        self.airports_lookup = dict(
-            zip(airports_df["monitored_airport_name"], airports_df["monitored_airport_code"])
-        )
         self.airport_selector.addItems(airports_df["monitored_airport_name"].tolist())
         self.airport_selector.currentTextChanged.connect(self.on_airport_changed)
         hist_layout.addWidget(self.airport_selector)
@@ -190,11 +217,7 @@ class MainWindow(QMainWindow):
         
         tables_layout = QHBoxLayout()
         
-        self.airport = (
-            airports_df["monitored_airport_code"].iloc[0]
-            if not airports_df.empty
-            else "EPWA"
-        )
+        
         
         arrivals_layout, self.arrivals = create_flight_table("Przyloty")
         departures_layout, self.departures = create_flight_table("Odloty")
@@ -304,12 +327,15 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(topbar, stretch=1)
         main_layout.addWidget(self.pages, stretch=8)
         
-
+        self.refresh_data()
         self.setCentralWidget(central)
-        
-        
+
+    def update_uptime(self):
+        self.uptime_minutes += 1
+        print(f"Aplikacja działa {self.uptime_minutes} minut")    
+    
     def refresh_data(self):
-        print("Pobieram dane z OpenSky...")
+        print("nowe dane")
 
     def closeEvent(self, event):
         self.engine.dispose()
