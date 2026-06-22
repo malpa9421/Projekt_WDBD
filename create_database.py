@@ -108,6 +108,42 @@ POLISH_AIRPORTS: list[tuple[str, str, str]] = [
     ("EPBH", "Bydgoszcz Baza LPR", "Bydgoszcz"),
     ("EPKX", "Kraków Baza LPR", "Kraków"),]
 
+AIRPORT_COORDINATES: dict[str, tuple[float, float]] = {
+    "EPBA": (49.805, 19.001), "EPPK": (52.421, 16.826),
+    "EPLR": (51.240, 22.717), "EPKM": (50.238, 19.035),
+    "EPGI": (53.524, 18.847), "EPOM": (51.577, 17.835),
+    "EPIN": (52.781, 18.249), "EPLS": (51.840, 16.529),
+    "EPZR": (49.766, 19.246), "EPJG": (50.899, 15.785),
+    "EPRG": (50.016, 18.636), "EPML": (50.322, 21.462),
+    "EPLU": (51.418, 16.202), "EPSW": (51.235, 22.715),
+    "EPNL": (49.750, 20.632), "EPZP": (51.976, 15.594),
+    "EPGL": (50.239, 18.668), "EPJS": (50.804, 15.785),
+    "EPKR": (49.683, 21.770), "EPPT": (51.721, 19.699),
+    "EPKA": (50.900, 20.700), "EPKP": (50.079, 20.245),
+    "EPPL": (52.421, 19.309), "EPWK": (52.807, 19.005),
+    "EPST": (50.570, 22.055), "EPBK": (53.104, 23.170),
+    "EPOD": (53.777, 20.408), "EPRP": (51.389, 21.213),
+    "EPNT": (49.462, 20.050), "EPOP": (50.625, 17.781),
+    "EPLL": (51.721, 19.398), "EPSD": (53.389, 14.633),
+    "EPWA": (52.165, 20.967), "EPPO": (52.421, 16.826),
+    "EPTO": (53.116, 18.010), "EPGD": (54.377, 18.466),
+    "EPKE": (54.077, 21.375), "EPEL": (54.167, 19.450),
+    "EPSU": (54.269, 22.893), "EPRZ": (50.110, 22.019),
+    "EPSC": (53.584, 14.902), "EPZA": (50.706, 23.207),
+    "EPSK": (54.479, 17.107), "EPRJ": (50.048, 22.019),
+    "EPKT": (50.474, 19.080), "EPBY": (53.096, 17.977),
+    "EPKK": (50.077, 19.784), "EPWR": (51.103, 16.886),
+    "EPZG": (52.139, 15.798), "EPSY": (53.481, 20.937),
+    "EPMO": (52.451, 20.651), "EPKG": (54.129, 15.285),
+    "EPBC": (52.269, 20.911), "EPLB": (51.240, 22.714),
+    "EPRA": (51.390, 21.214), "EPKW": (49.855, 19.059),
+    "EPCD": (51.198, 23.303), "EPRU": (50.884, 19.193),
+    "EPSA": (49.560, 22.207), "EPZE": (51.841, 16.519),
+    "EPKH": (54.207, 16.265), "EPPB": (52.491, 16.948),
+    "EPPG": (51.792, 16.784), "EPMR": (50.984, 16.887),
+    "EPBH": (53.096, 17.978), "EPKX": (50.077, 19.784),
+}
+
 
 class Base(DeclarativeBase):
     pass
@@ -634,14 +670,20 @@ def seed_airports(engine: Engine) -> None:
             "airport_name": airport_name,
             "city": city,
             "country_code": "PL",
+            "latitude": AIRPORT_COORDINATES[icao_code][0],
+            "longitude": AIRPORT_COORDINATES[icao_code][1],
             "is_monitored": True,
         }
         for icao_code, airport_name, city in POLISH_AIRPORTS
     ]
 
     statement = insert(Airport).values(values)
-    statement = statement.on_conflict_do_nothing(
-        index_elements=[Airport.icao_code]
+    statement = statement.on_conflict_do_update(
+        index_elements=[Airport.icao_code],
+        set_={
+            "latitude": statement.excluded.latitude,
+            "longitude": statement.excluded.longitude,
+        },
     )
 
     with engine.begin() as connection:
