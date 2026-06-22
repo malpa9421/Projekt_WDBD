@@ -36,9 +36,11 @@ class TrafficChart(FigureCanvasQTAgg):
 
         self.ax.clear()
 
-        x = df["airport_code"]
-        arrivals = df["arrivals"]
-        departures = df["departures"]
+        n = 15
+        x = df["airport_code"][:n]
+        arrivals = df["arrivals"][:n]
+        departures = df["departures"][:n]
+        totals = df["total_operations"][:n]
 
         self.ax.bar(x, arrivals, label="Przyloty")
 
@@ -48,7 +50,6 @@ class TrafficChart(FigureCanvasQTAgg):
         self.ax.set_xlabel("Lotnisko")
         self.ax.set_ylabel("Liczba operacji")
 
-        totals = df["total_operations"]
         for i, total in enumerate(totals):
             self.ax.text(
                 i,
