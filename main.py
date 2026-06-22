@@ -108,10 +108,14 @@ class MainWindow(QMainWindow):
             callsign=self.flight_number_input.text().strip() or None,
             monitored_airport=monitored_airport,
             event_type=event_type,
-            start_date=self.departure_date_from.date().toString("yyyy-MM-dd"),
-            end_date=self.departure_date_to.date().toString("yyyy-MM-dd"),
-            start_time=self.departure_time_from.time().toString("HH:mm:ss"),
-            end_time=self.departure_time_to.time().toString("HH:mm:ss"),
+            departure_start_date=self.departure_date_from.date().toString("yyyy-MM-dd"),
+            departure_end_date=self.departure_date_to.date().toString("yyyy-MM-dd"),
+            departure_start_time=self.departure_time_from.time().toString("HH:mm:ss"),
+            departure_end_time=self.departure_time_to.time().toString("HH:mm:ss"),
+            arrival_start_date=self.arrival_date_from.date().toString("yyyy-MM-dd"),
+            arrival_end_date=self.arrival_date_to.date().toString("yyyy-MM-dd"),
+            arrival_start_time=self.arrival_time_from.time().toString("HH:mm:ss"),
+            arrival_end_time=self.arrival_time_to.time().toString("HH:mm:ss"),
         )
 
         self.search_results.setModel(PandasModel(search_results))
@@ -292,8 +296,7 @@ class MainWindow(QMainWindow):
         form_layout.addRow("Data przylotu do:", self.arrival_date_to)
         form_layout.addRow("Godzina przylotu od:", self.arrival_time_from)
         form_layout.addRow("Godzina przylotu do:", self.arrival_time_to)
-        form_layout.addRow("Min. długość [min]:", self.min_duration_spin)
-        form_layout.addRow("Max. długość [min]:", self.max_duration_spin)
+        
 
         filter_layout.addLayout(form_layout)
 

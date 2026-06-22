@@ -490,10 +490,14 @@ def build_flight_search_filters(
     callsign: str | None = None,
     monitored_airport: str | None = None,
     event_type: str | None = None,
-    start_date: str | date | None = None,
-    end_date: str | date | None = None,
-    start_time: str | None = None,
-    end_time: str | None = None,
+    departure_start_date: str | date | None = None,
+    departure_end_date: str | date | None = None,
+    arrival_start_date: str | date | None = None,
+    arrival_end_date: str | date | None = None,
+    departure_start_time: str | None = None,
+    departure_end_time: str | None = None,
+    arrival_start_time: str | None = None,
+    arrival_end_time: str | None = None,
 ) -> tuple[str, dict]:
     conditions: list[str] = []
     params: dict = {}
@@ -518,23 +522,61 @@ def build_flight_search_filters(
         conditions.append("event_type_code = :event_type")
         params["event_type"] = event_type
 
-    start_date = normalize_date(start_date, "start_date")
-    end_date = normalize_date(end_date, "end_date")
-    if start_date:
-        conditions.append("event_date_local >= :start_date")
-        params["start_date"] = start_date
-    if end_date:
-        conditions.append("event_date_local <= :end_date")
-        params["end_date"] = end_date
+    
 
-    start_time = normalize_time(start_time, "start_time")
-    end_time = normalize_time(end_time, "end_time")
-    if start_time:
-        conditions.append("event_time_utc::time >= :start_time")
-        params["start_time"] = start_time
-    if end_time:
-        conditions.append("event_time_utc::time <= :end_time")
-        params["end_time"] = end_time
+    def add_date_time_filters(prefix: str, date_column: str, start_date, end_date, start_time, end_time, event_type_code):
+        group: list[str] = [f"event_type_code = '{event_type_code}'"]
+        if start_date:
+            group.append(f"{date_column} >= :{prefix}_start_date")
+            params[f"{prefix}_start_date"] = normalize_date(start_date, f"{prefix}_start_date")
+        if end_date:
+            group.append(f"{date_column} <= :{prefix}_end_date")
+            params[f"{prefix}_end_date"] = normalize_date(end_date, f"{prefix}_end_date")
+        if start_time:
+            group.append("event_time_utc::time >= :%s_start_time" % prefix)
+            params[f"{prefix}_start_time"] = normalize_time(start_time, f"{prefix}_start_time")
+        if end_time:
+            group.append("event_time_utc::time <= :%s_end_time" % prefix)
+            params[f"{prefix}_end_time"] = normalize_time(end_time, f"{prefix}_end_time")
+        return group
+
+    departure_group = add_date_time_filters(
+        "departure",
+        "event_date_local",
+        departure_start_date,
+        departure_end_date,
+        departure_start_time,
+        departure_end_time,
+        "DEPARTURE",
+    )
+    arrival_group = add_date_time_filters(
+        "arrival",
+        "event_date_local",
+        arrival_start_date,
+        arrival_end_date,
+        arrival_start_time,
+        arrival_end_time,
+        "ARRIVAL",
+    )
+
+    if event_type == "DEPARTURE":
+        if len(departure_group) > 1:
+            conditions.append(" AND ".join(departure_group))
+        else:
+            conditions.append("event_type_code = 'DEPARTURE'")
+    elif event_type == "ARRIVAL":
+        if len(arrival_group) > 1:
+            conditions.append(" AND ".join(arrival_group))
+        else:
+            conditions.append("event_type_code = 'ARRIVAL'")
+    else:
+        type_conditions: list[str] = []
+        if len(departure_group) > 1:
+            type_conditions.append("(" + " AND ".join(departure_group) + ")")
+        if len(arrival_group) > 1:
+            type_conditions.append("(" + " AND ".join(arrival_group) + ")")
+        if type_conditions:
+            conditions.append("(" + " OR ".join(type_conditions) + ")")
 
     where_sql = "WHERE " + " AND ".join(conditions) if conditions else ""
     return where_sql, params
@@ -546,10 +588,14 @@ def search_flights(
     callsign: str | None = None,
     monitored_airport: str | None = None,
     event_type: str | None = None,
-    start_date: str | date | None = None,
-    end_date: str | date | None = None,
-    start_time: str | None = None,
-    end_time: str | None = None,
+    departure_start_date: str | date | None = None,
+    departure_end_date: str | date | None = None,
+    arrival_start_date: str | date | None = None,
+    arrival_end_date: str | date | None = None,
+    departure_start_time: str | None = None,
+    departure_end_time: str | None = None,
+    arrival_start_time: str | None = None,
+    arrival_end_time: str | None = None,
     limit: int = 300,
 ) -> pd.DataFrame:
     where_sql, params = build_flight_search_filters(
@@ -558,10 +604,14 @@ def search_flights(
         callsign=callsign,
         monitored_airport=monitored_airport,
         event_type=event_type,
-        start_date=start_date,
-        end_date=end_date,
-        start_time=start_time,
-        end_time=end_time,
+        departure_start_date=departure_start_date,
+        departure_end_date=departure_end_date,
+        arrival_start_date=arrival_start_date,
+        arrival_end_date=arrival_end_date,
+        departure_start_time=departure_start_time,
+        departure_end_time=departure_end_time,
+        arrival_start_time=arrival_start_time,
+        arrival_end_time=arrival_end_time,
     )
 
     params["limit"] = limit
