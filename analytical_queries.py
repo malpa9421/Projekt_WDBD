@@ -513,19 +513,62 @@ def build_flight_search_filters(
 
     
 
-def list_monitored_airports(engine: Engine) -> pd.DataFrame:
-    
-    query = """
-        SELECT
-            icao_code AS monitored_airport_code,
-            airport_name AS monitored_airport_name,
-            latitude,
-            longitude
-        FROM airport
-        WHERE is_monitored = TRUE
-        ORDER BY airport_name
-    """
-    return read_dataframe(engine, query, {})
+    def add_date_time_filters(prefix: str, date_column: str, start_date, end_date, start_time, end_time, event_type_code):
+        group: list[str] = [f"event_type_code = '{event_type_code}'"]
+        if start_date:
+            group.append(f"{date_column} >= :{prefix}_start_date")
+            params[f"{prefix}_start_date"] = normalize_date(start_date, f"{prefix}_start_date")
+        if end_date:
+            group.append(f"{date_column} <= :{prefix}_end_date")
+            params[f"{prefix}_end_date"] = normalize_date(end_date, f"{prefix}_end_date")
+        if start_time:
+            group.append("event_time_utc::time >= :%s_start_time" % prefix)
+            params[f"{prefix}_start_time"] = normalize_time(start_time, f"{prefix}_start_time")
+        if end_time:
+            group.append("event_time_utc::time <= :%s_end_time" % prefix)
+            params[f"{prefix}_end_time"] = normalize_time(end_time, f"{prefix}_end_time")
+        return group
+
+    departure_group = add_date_time_filters(
+        "departure",
+        "event_date_local",
+        departure_start_date,
+        departure_end_date,
+        departure_start_time,
+        departure_end_time,
+        "DEPARTURE",
+    )
+    arrival_group = add_date_time_filters(
+        "arrival",
+        "event_date_local",
+        arrival_start_date,
+        arrival_end_date,
+        arrival_start_time,
+        arrival_end_time,
+        "ARRIVAL",
+    )
+
+    if event_type == "DEPARTURE":
+        if len(departure_group) > 1:
+            conditions.append(" AND ".join(departure_group))
+        else:
+            conditions.append("event_type_code = 'DEPARTURE'")
+    elif event_type == "ARRIVAL":
+        if len(arrival_group) > 1:
+            conditions.append(" AND ".join(arrival_group))
+        else:
+            conditions.append("event_type_code = 'ARRIVAL'")
+    else:
+        type_conditions: list[str] = []
+        if len(departure_group) > 1:
+            type_conditions.append("(" + " AND ".join(departure_group) + ")")
+        if len(arrival_group) > 1:
+            type_conditions.append("(" + " AND ".join(arrival_group) + ")")
+        if type_conditions:
+            conditions.append("(" + " OR ".join(type_conditions) + ")")
+
+    where_sql = "WHERE " + " AND ".join(conditions) if conditions else ""
+    return where_sql, params
 
 def search_flights(
     engine: Engine,
@@ -586,6 +629,7 @@ def search_flights(
     dataframe["Czas UTC"] = dataframe["Czas UTC"].dt.strftime("%H:%M:%S")
 
     return dataframe
+
 
 def main() -> int:
     args = build_parser().parse_args()
