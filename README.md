@@ -22,17 +22,22 @@ Aplikacja do śledzenia lotów w Polsce. Pobiera dane historyczne i bieżące z 
 - PostgreSQL 14+
 - [uv](https://docs.astral.sh/uv/)
 - Konto w serwisie [OpenSky Network](https://opensky-network.org)
+ - Git
 ---
  
 ## Instalacja
- 
-### 1. Przygotowanie środowiska
- 
+### 1. Pobranie repozytorium
+```bash
+git clone https://github.com/malpa9421/Projekt_WDBD.git
+cd Projekt_WDBD
+```
+### 2. Przygotowanie środowiska
+
 ```bash
 uv sync
 ```
- 
-### 2. Konfiguracja
+
+## Konfiguracja
  
 Utwórz plik `.env` w katalogu głównym projektu:
  
@@ -47,14 +52,14 @@ DB_ADMIN_DATABASE=postgres
  
 Następnie pobierz poświadczenia API ze strony [opensky-network.org](https://opensky-network.org) i umieść plik `credentials.json` w katalogu głównym projektu.
  
-### 3. Inicjalizacja bazy danych
+### Inicjalizacja bazy danych
  
 ```bash
 uv run create_database.py
 uv run create_views.py
 ```
  
-### 4. Wstępny import danych
+### Wstępny import danych
  
 ```bash
 uv run import_data_all.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD
@@ -62,13 +67,13 @@ uv run import_data_all.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD
  
 > **Uwaga:** Import jednego dnia kosztuje ~360 kredytów API. Dzienny limit dla konta standardowego wynosi 4 000 kredytów, co pozwala na import maksymalnie 11 dni wstecz w ciągu jednej doby.
  
-### 5. Uruchomienie aplikacji
+## Uruchomienie aplikacji
  
 ```bash
 uv run main.py
 ```
  
-### 6. Automatyczna synchronizacja danych
+### Automatyczna synchronizacja danych
   
 ```bash
 uv run scheduler.py
