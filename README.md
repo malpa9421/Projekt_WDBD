@@ -75,8 +75,4 @@ uv run main.py
  
 ### Automatyczna synchronizacja danych
   
-```bash
-uv run scheduler.py
-```
- 
-Skrypt odświeża bazę danych co 24 godziny. Musi pozostać uruchomiony przez cały czas, w którym ma odbywać się automatyczna aktualizacja.
+Baza danych aktualizuje się porównując czas aktualny do ostatniej zimportowanej do bazy daty. Jednorazowo importuje maksymalnie 3 dni.
