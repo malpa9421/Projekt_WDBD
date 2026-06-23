@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QPushButton, QStackedWidget, QLabel, QVBoxLayout, QHBoxLayout, QTableView, QComboBox, QHeaderView, QSizePolicy, QLineEdit, QDateEdit, QTimeEdit, QFormLayout, QSpinBox, QMenu
 from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtCore import QUrl, QDate, QTime, QTimer, Qt
+from PySide6.QtCore import QUrl, QDate, QTime, QTimer, Qt, QThread, Signal
 from PySide6.QtWebEngineCore import QWebEngineSettings
 from qt_material import apply_stylesheet
 from Qt_df_model import *
@@ -10,9 +10,10 @@ from matplotlib.figure import Figure
 import pandas as pd
 import sys
 from pathlib import Path
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 import json
 
+from sqlalchemy import text
 from import_data_all import import_flights, console_progress
 from analytical_queries import create_engine_for_database, traffic_by_airport, arrival_by_airport, departure_by_airport, list_monitored_airports, search_flights, popular_routes
 
@@ -119,6 +120,24 @@ AIRPORT_COORDINATES: dict[str, tuple[float, float]] = {
     "EPBH": (53.096, 17.978), "EPKX": (50.077, 19.784),
 }
 
+class ImportThread(QThread):
+    finished = Signal()
+
+    def __init__(self, start_date, end_date, engine):
+        super().__init__()
+        self.start_date = start_date
+        self.end_date = end_date
+        self.engine = engine
+
+    def run(self):
+        try:
+            import_flights(start_date=self.start_date, end_date=self.end_date,
+                        engine=self.engine, progress_callback=console_progress)
+        except Exception as e:
+            print(f"[ImportThread] Błąd: {e}")
+        finally:
+            self.finished.emit()
+
 class MainWindow(QMainWindow):
     def setup_table_columns(table: QTableView) -> None:
         header = table.horizontalHeader()
@@ -158,10 +177,14 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.uptime_minutes = 0
         
+        
+
         #engine dla całego gui, usuwany przy zamknięciu
         self.engine = create_engine_for_database()
         airports_df = list_monitored_airports(self.engine)
         
+        
+
         self.airports_lookup = dict(
             zip(airports_df["monitored_airport_name"], airports_df["monitored_airport_code"])
         )
@@ -171,6 +194,11 @@ class MainWindow(QMainWindow):
             if not airports_df.empty
             else "EPWA"
         )
+
+        self.sync_timer = QTimer(self)
+        self.sync_timer.timeout.connect(self.refresh_data)
+        self.sync_timer.start(60000)
+        
 
         self.uptime_timer = QTimer(self)
         self.uptime_timer.timeout.connect(self.update_uptime)
@@ -343,16 +371,58 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(topbar, stretch=1)
         main_layout.addWidget(self.pages, stretch=8)
         
-        self.refresh_data()
         self.setCentralWidget(central)
 
     def update_uptime(self):
         self.uptime_minutes += 1
         print(f"Aplikacja działa {self.uptime_minutes} minut")    
     
+    def sync_finished(self) -> None:
+        if self.pages.currentIndex() == 1:
+            self.arrivals.setModel(PandasModel(arrival_by_airport(self.engine, self.airport)))
+            self.departures.setModel(PandasModel(departure_by_airport(self.engine, self.airport)))
+        elif self.pages.currentIndex() == 2:
+            chart = self.pages.widget(2).findChild(TrafficChart)
+            if chart:
+                chart.load_data()
+        if self.search_results.model() is not None:
+            self.on_search_clicked()
+        self.load_airports_to_map()
+        self.sync_timer.start(60000)
+        
     def refresh_data(self):
-        print("nowe dane")
-        print("Pobieram dane z OpenSky...")
+        try:
+            sql = text("""
+                SELECT MAX(period_end_utc)
+                FROM import_log
+                WHERE status IN ('SUCCESS', 'NO_DATA')
+            """)
+            with self.engine.connect() as conn:
+                last_end = conn.scalar(sql)
+
+            if last_end is None:
+                return
+    
+            if last_end.tzinfo is None:
+                last_end = last_end.replace(tzinfo=timezone.utc)
+    
+            now = datetime.now(timezone.utc)
+            if now - last_end < timedelta(hours=24):
+                return
+            diff = now - last_end
+            print(f"[Sync] różnica: {diff}")
+            start = max(last_end.date(), (now - timedelta(days=3)).date())
+            end = now.date()
+    
+            print(f"[Sync] Import: {start} → {end}")
+            self.sync_timer.stop() 
+            
+            self._importthread = ImportThread(start.isoformat(), end.isoformat(), self.engine)
+            self._importthread.finished.connect(self.sync_finished)
+            self._importthread.start()
+        except Exception as e:
+           print(f"[Sync] wyjątek: {type(e).__name__}: {e}")
+
 
     def closeEvent(self, event):
         self.engine.dispose()
